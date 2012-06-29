@@ -5,7 +5,8 @@ module AnnotateModels
   PREFIX           = "== Schema Information"
   PREFIX_MD        = "## Schema Information"
   END_MARK         = "== Schema Information End"
-  PATTERN          = /^\n?# (?:#{COMPAT_PREFIX}|#{COMPAT_PREFIX_MD}).*?\n(#.*\n)*\n/
+  END_MARK_MD      = "<!-- End of Schema Information -->"
+  PATTERN          = /# (?:#{COMPAT_PREFIX}|#{COMPAT_PREFIX_MD}).*?\n(#.*\n)*# (?:#{END_MARK}|#{END_MARK_MD})\n(#|#++)\n/
 
   # File.join for windows reverse bar compat?
   # I dont use windows, can`t test
@@ -162,7 +163,9 @@ module AnnotateModels
         info << "# #{END_MARK}\n"
         info << "#++\n\n"
       else
-        info << "#\n\n"
+        info << "#\n"
+        info << "# #{END_MARK_MD}\n"
+        info << "#\n"
       end
     end
 
@@ -201,7 +204,7 @@ module AnnotateModels
     def annotate_one_file(file_name, info_block, position, options={})
       if File.exist?(file_name)
         old_content = File.read(file_name)
-        return false if(old_content =~ /# -\*- SkipSchemaAnnotations.*\n/)
+        return false if (old_content =~ /# -\*- SkipSchemaAnnotations.*\n/)
 
         # Ignore the Schema version line because it changes with each migration
         header_pattern = /(^# Table name:.*?\n(#.*[\r]?\n)*[\r]?\n)/
@@ -234,11 +237,14 @@ module AnnotateModels
 
           # Strip the old schema info, and insert new schema info.
           old_content.sub!(encoding, '')
-          old_content.sub!(PATTERN, '')
 
-          new_content = options[position].to_s == 'after' ?
-            (encoding_header + (old_content.rstrip + "\n\n" + info_block)) :
-            (encoding_header + info_block + old_content)
+          if old_content.match(PATTERN)
+            new_content = old_content.sub(PATTERN, info_block)
+          else
+            new_content = (options[:position] || 'before').to_s == 'after' ?
+              (encoding_header + (old_content.rstrip + "\n\n" + info_block)) :
+              (encoding_header + info_block + old_content)
+          end
 
           File.open(file_name, "wb") { |f| f.puts new_content }
           return true
